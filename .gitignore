@@ -1,0 +1,7 @@
+node_modules/
+session/
+data/
+qr.png
+bot.log
+.local-secrets.json
+.env
