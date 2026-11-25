@@ -25,9 +25,16 @@ const { useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion, Brow
 const secretsPath = path.resolve(__dirname, '..', '.local-secrets.json');
 const secrets = fs.existsSync(secretsPath) ? JSON.parse(fs.readFileSync(secretsPath, 'utf8')) : {};
 
-process.env.AI_API_KEY = process.env.AI_API_KEY || secrets.AI_API_KEY || '';
-process.env.AI_BASE_URL = process.env.AI_BASE_URL || secrets.AI_BASE_URL || 'https://api.z.ai/api/paas/v4';
-process.env.AI_MODEL = process.env.AI_MODEL || secrets.AI_MODEL || 'glm-4.5-flash';
+// الأساسي: Groq (أسرع بكتير)
+process.env.AI_API_KEY = process.env.AI_API_KEY || secrets.GROQ_API_KEY || '';
+process.env.AI_BASE_URL = process.env.AI_BASE_URL || 'https://api.groq.com/openai/v1';
+process.env.AI_MODEL = process.env.AI_MODEL || 'qwen/qwen3.8-27b';
+
+// الاحتياطي: Z.ai
+process.env.AI_FALLBACK_API_KEY = process.env.AI_FALLBACK_API_KEY || secrets.AI_API_KEY || '';
+process.env.AI_FALLBACK_BASE_URL = process.env.AI_FALLBACK_BASE_URL || secrets.AI_BASE_URL || 'https://api.z.ai/api/paas/v4';
+process.env.AI_FALLBACK_MODEL = process.env.AI_FALLBACK_MODEL || secrets.AI_MODEL || 'glm-4.5-flash';
+
 process.env.AI_THINKING = process.env.AI_THINKING || 'disabled';
 process.env.AI_TIMEOUT_MS = process.env.AI_TIMEOUT_MS || '25000';
 process.env.CONTACT_PHONE = process.env.CONTACT_PHONE || '01213737181';
@@ -37,9 +44,9 @@ const skipContacts = new Set((config.skipContacts || []).map((s) => String(s).re
 const groupName = process.env.GROUP_NAME || config.groupName || 'العواطليه';
 const replyPrivate = process.env.REPLY_PRIVATE ? process.env.REPLY_PRIVATE === 'true' : Boolean(config.replyPrivate);
 
-const { buildSystemPrompt } = require('./lib/persona.cjs');
-const { generateReply } = require('./lib/brain.cjs');
-const { webSearch } = require('./lib/search.cjs');
+const { buildSystemPrompt } = require('./persona.cjs');
+const { generateReply } = require('./brain.cjs');
+const { webSearch } = require('./search.cjs');
 
 if (!process.env.AI_API_KEY) {
   console.error('❌ مفيش AI_API_KEY');
@@ -253,6 +260,20 @@ async function start() {
   });
 
   sock.ev.on('creds.update', saveCreds);
+
+  // ربط بكود أرقام بدل QR (لو PAIR_WITH متحدد)
+  const pairWith = (process.env.PAIR_WITH || '').replace(/[^0-9]/g, '');
+  if (pairWith && sock.authState && sock.authState.creds && !sock.authState.creds.registered) {
+    setTimeout(async () => {
+      try {
+        const code = await sock.requestPairingCode(pairWith);
+        console.log('🔑 كود الربط: ' + code);
+        console.log('PAIR_CODE=' + code);
+      } catch (err) {
+        console.log('pair code failed:', err.message);
+      }
+    }, 4000);
+  }
 
   sock.ev.on('connection.update', async (update) => {
     const { connection, lastDisconnect, qr } = update;
